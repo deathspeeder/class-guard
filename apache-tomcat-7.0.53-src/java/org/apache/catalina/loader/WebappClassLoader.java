@@ -20,6 +20,7 @@ package org.apache.catalina.loader;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FilePermission;
 import java.io.IOException;
@@ -36,6 +37,7 @@ import java.nio.charset.Charset;
 import java.security.AccessControlException;
 import java.security.AccessController;
 import java.security.CodeSource;
+import java.security.NoSuchAlgorithmException;
 import java.security.Permission;
 import java.security.PermissionCollection;
 import java.security.Policy;
@@ -80,6 +82,16 @@ import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.IntrospectionUtils;
 import org.apache.tomcat.util.res.StringManager;
 
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 /**
  * Specialized web application class loader.
  * <p>
@@ -2867,6 +2879,10 @@ public class WebappClassLoader
         return true;
     }
 
+    private boolean isLumanSecretClass(String name) {
+        return name.startsWith("com.lumanmed") || name.startsWith("com.thinkgem") ||
+                name.equals("org.springframework.core.type.classreading.SimpleMetadataReader");
+    }
 
     /**
      * Find specified class in local repositories.
@@ -2875,12 +2891,16 @@ public class WebappClassLoader
      */
     protected Class<?> findClassInternal(String name)
         throws ClassNotFoundException {
+//        System.out.println("WebappClassLoader: find " + name);
 
         if (!validate(name))
             throw new ClassNotFoundException(name);
 
         String tempPath = name.replace('.', '/');
         String classPath = tempPath + ".class";
+        if (isLumanSecretClass(name)) {
+            classPath = classPath + ".enc";
+        }
 
         ResourceEntry entry = null;
 
@@ -2904,6 +2924,7 @@ public class WebappClassLoader
             if (clazz != null)
                 return clazz;
 
+//            System.out.println("WebappClassLoader: content " + entry.binaryContent);
             if (entry.binaryContent == null)
                 throw new ClassNotFoundException(name);
 
@@ -2954,6 +2975,32 @@ public class WebappClassLoader
             }
 
             try {
+                if (isLumanSecretClass(name)) {
+//                    System.out.println("WebappClassLoader: " + name);
+                    if (entry.binaryContent == null) {
+                        if (entry.source != null) {
+                            System.out.println("WebappClassLoader: read " + name);
+                            try {
+                                FileInputStream in = new FileInputStream(
+                                        entry.source.getFile());
+                                entry.binaryContent = new byte[in.available()];
+                                in.read(entry.binaryContent);
+                                in.close();
+                                
+                            } catch (IOException e) {
+                                throw new ClassNotFoundException(name);
+                            }
+                        } else {
+                            log.error("Failed on loading class " + name);
+                        }
+                    }
+                    try {
+                        entry.binaryContent = decrypt(entry.binaryContent);
+                    } catch (NullPointerException npe) {
+                        throw npe;
+//                        npe.printStackTrace();
+                    }
+                }
                 clazz = defineClass(name, entry.binaryContent, 0,
                         entry.binaryContent.length,
                         new CodeSource(entry.codeBase, entry.certificates));
@@ -2974,7 +3021,29 @@ public class WebappClassLoader
         return clazz;
 
     }
-
+    
+    private static byte[] decrypt(byte[] encryptedData) {
+        try {
+            SecretKey keySpec = new SecretKeySpec("0123456789012345".getBytes(), "AES");
+            IvParameterSpec ivSpec = new IvParameterSpec("0123456789012345".getBytes());
+            Cipher cipher = Cipher.getInstance("AES/CFB/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
+            return cipher.doFinal(encryptedData);
+        } catch (IllegalBlockSizeException e) {
+            throw new SecurityException(e);
+        } catch (BadPaddingException e) {
+            throw new SecurityException(e);
+        } catch (InvalidKeyException e) {
+            throw new SecurityException(e);
+        } catch (InvalidAlgorithmParameterException e) {
+            throw new SecurityException(e);
+        } catch (NoSuchAlgorithmException e) {
+            throw new SecurityException(e);
+        } catch (NoSuchPaddingException e) {
+            throw new SecurityException(e);
+        }
+    }
+    
     /**
      * Find specified resource in local repositories.
      *
@@ -3013,7 +3082,7 @@ public class WebappClassLoader
 
         int contentLength = -1;
         InputStream binaryStream = null;
-        boolean isClassResource = path.endsWith(".class");
+        boolean isClassResource = path.endsWith(".class") || path.endsWith(".class.enc");
         boolean isCacheable = isClassResource;
         if (!isCacheable) {
              isCacheable = path.startsWith(SERVICES_PREFIX);
