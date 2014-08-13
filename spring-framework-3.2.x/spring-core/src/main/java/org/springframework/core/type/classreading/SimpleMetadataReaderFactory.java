@@ -71,8 +71,12 @@ public class SimpleMetadataReaderFactory implements MetadataReaderFactory {
 
 
 	public MetadataReader getMetadataReader(String className) throws IOException {
+		String suffix = ClassUtils.CLASS_FILE_SUFFIX;
+		if (className.startsWith("com.lumanmed") || className.startsWith("com.thinkgem")) {
+			suffix = ClassUtils.LUMAN_CLASS_FILE_SUFFIX;
+		}
 		String resourcePath = ResourceLoader.CLASSPATH_URL_PREFIX +
-				ClassUtils.convertClassNameToResourcePath(className) + ClassUtils.CLASS_FILE_SUFFIX;
+				ClassUtils.convertClassNameToResourcePath(className) + suffix;
 		return getMetadataReader(this.resourceLoader.getResource(resourcePath));
 	}
 

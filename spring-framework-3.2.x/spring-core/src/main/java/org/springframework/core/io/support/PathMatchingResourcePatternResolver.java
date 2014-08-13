@@ -598,6 +598,9 @@ public class PathMatchingResourcePatternResolver implements ResourcePatternResol
 		fullPattern = fullPattern + StringUtils.replace(pattern, File.separator, "/");
 		Set<File> result = new LinkedHashSet<File>(8);
 		doRetrieveMatchingFiles(fullPattern, rootDir, result);
+
+		// Luman specific code for encryption
+		doRetrieveMatchingFiles(fullPattern + ".enc", rootDir, result);
 		return result;
 	}
 

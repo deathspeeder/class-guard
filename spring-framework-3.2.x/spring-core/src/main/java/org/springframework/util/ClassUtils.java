@@ -68,6 +68,8 @@ public abstract class ClassUtils {
 	/** The ".class" file suffix */
 	public static final String CLASS_FILE_SUFFIX = ".class";
 
+	/** The ".class.enc" file suffix */
+	public static final String LUMAN_CLASS_FILE_SUFFIX = ".class.enc";
 
 	/**
 	 * Map with primitive wrapper type as key and corresponding primitive

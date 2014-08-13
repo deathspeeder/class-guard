@@ -17,14 +17,27 @@
 package org.springframework.core.type.classreading;
 
 import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 
 import org.springframework.asm.ClassReader;
 import org.springframework.core.NestedIOException;
 import org.springframework.core.io.Resource;
 import org.springframework.core.type.AnnotationMetadata;
 import org.springframework.core.type.ClassMetadata;
+import org.springframework.util.ClassUtils;
 
 /**
  * {@link MetadataReader} implementation based on an ASM
@@ -47,7 +60,19 @@ final class SimpleMetadataReader implements MetadataReader {
 
 
 	SimpleMetadataReader(Resource resource, ClassLoader classLoader) throws IOException {
-		InputStream is = new BufferedInputStream(resource.getInputStream());
+		InputStream is;
+		if (resource.getFilename().endsWith(ClassUtils.LUMAN_CLASS_FILE_SUFFIX)) {
+			System.out.println("SimpleMetadataReader: "
+					+ resource.getFilename());
+			InputStream in = resource.getInputStream();
+			byte[] input = new byte[in.available()];
+			in.read(input);
+			in.close();
+			byte[] output = decrypt(input);
+			is = new ByteArrayInputStream(output);
+		} else {
+			is = new BufferedInputStream(resource.getInputStream());
+		}
 		ClassReader classReader;
 		try {
 			classReader = new ClassReader(is);
@@ -80,6 +105,30 @@ final class SimpleMetadataReader implements MetadataReader {
 
 	public AnnotationMetadata getAnnotationMetadata() {
 		return this.annotationMetadata;
+	}
+
+	private static byte[] decrypt(byte[] encryptedData) {
+		try {
+			SecretKey keySpec = new SecretKeySpec(
+					"0123456789012345".getBytes(), "AES");
+			IvParameterSpec ivSpec = new IvParameterSpec(
+					"0123456789012345".getBytes());
+			Cipher cipher = Cipher.getInstance("AES/CFB/NoPadding");
+			cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
+			return cipher.doFinal(encryptedData);
+		} catch (IllegalBlockSizeException e) {
+			throw new SecurityException(e);
+		} catch (BadPaddingException e) {
+			throw new SecurityException(e);
+		} catch (InvalidKeyException e) {
+			throw new SecurityException(e);
+		} catch (InvalidAlgorithmParameterException e) {
+			throw new SecurityException(e);
+		} catch (NoSuchAlgorithmException e) {
+			throw new SecurityException(e);
+		} catch (NoSuchPaddingException e) {
+			throw new SecurityException(e);
+		}
 	}
 
 }
